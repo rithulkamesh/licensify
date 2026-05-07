@@ -65,7 +65,24 @@ function defaultClock() {
  */
 function loadNative(): NativeBindings {
   const koffi = require("koffi");
-  const lib = koffi.load("liblicensify");
+  const nodePath = require("path");
+  const nodeUrl = require("url");
+  const fs = require("fs");
+
+  const libFile = process.platform === "darwin" ? "liblicensify.dylib" : "liblicensify.so";
+  const __dirname = nodePath.dirname(nodeUrl.fileURLToPath(import.meta.url));
+  const targetDir = nodePath.resolve(__dirname, "..", "..", "..", "target");
+
+  let libPath = "liblicensify";
+  for (const subdir of ["debug", "release"]) {
+    const candidate = nodePath.join(targetDir, subdir, libFile);
+    if (fs.existsSync(candidate)) {
+      libPath = candidate;
+      break;
+    }
+  }
+
+  const lib = koffi.load(libPath);
 
   koffi.struct("licensify_config_t", {
     server_url: "const char *",
