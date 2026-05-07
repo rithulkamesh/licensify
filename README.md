@@ -1,78 +1,62 @@
 # Licensify
 
-Licensify is an open-source licensing system designed for **offline-capable, machine-bound license validation** with a **language-agnostic client** exposed via a stable C ABI.
+[![CI](https://github.com/rithulkamesh/licensify/actions/workflows/ci.yml/badge.svg)](https://github.com/rithulkamesh/licensify/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Go](https://img.shields.io/badge/Go-1.23-00ADD8?logo=go)](https://go.dev)
+[![Rust](https://img.shields.io/badge/Rust-stable-000000?logo=rust)](https://www.rust-lang.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript)](https://www.typescriptlang.org)
+[![Zig](https://img.shields.io/badge/Zig-0.13-F7A41D?logo=zig)](https://ziglang.org)
 
-## Why Licensify is different
+**Offline-capable, machine-bound license validation** with a **language-agnostic client** exposed via a stable C ABI.
 
-- **No JWT**: token format is custom binary + signed, not self-describing JSON payloads.
-- **Machine-bound by design**: hardware-derived machine identity is part of activation and validation.
-- **Offline-first enforcement**: cached encrypted token supports offline checks with local policy enforcement.
-- **FFI-first architecture**: one hardened Rust core, consumed consistently from Go/C++/TypeScript/Rust/C/Zig.
-- **Server-issued cert chain model**: activation and validation are cryptographically anchored from server CA material.
+> One hardened Rust core — consumed from **Go, C, C++, TypeScript, Rust, Zig**.
 
-## Repository layout
+## ⭐ Star History
 
-- `server/`: Go licensing API (Echo + pgx)
-- `client/`: Rust client core + C FFI (`licensify_*`)
-- `sdk/`: Language SDKs wrapping the C ABI (Go/C++/TypeScript/Rust/C/Zig)
-- `proto/`: Shared protocol contracts
-- `docs/`: Architecture, protocol, integration
-- `examples/`: Smoke tests and usage snippets
+[![Star History Chart](https://api.star-history.com/svg?repos=rithulkamesh/licensify&type=Date)](https://star-history.com/#rithulkamesh/licensify&Date)
 
-## Install & run
+## Why Licensify
 
-### Option A: Docker (recommended)
+- **No JWT** — custom binary + signed token format, not self-describing JSON payloads.
+- **Machine-bound by design** — hardware-derived machine identity is part of activation and validation.
+- **Offline-first enforcement** — cached encrypted token supports offline checks with local policy enforcement.
+- **FFI-first architecture** — one hardened Rust core, consumed consistently from Go/C++/TypeScript/Rust/C/Zig.
+- **Server-issued cert chain model** — activation and validation are cryptographically anchored from server CA material.
+
+## Quick start
+
+### Docker (recommended)
 
 ```bash
-git clone git@github.com:rithulkamesh/licensify.git
+git clone https://github.com/rithulkamesh/licensify.git
 cd licensify
 docker compose up -d --build
 curl -sS http://localhost:8080/v1/health
 ```
 
-### Option B: Native server
+### Native server
 
 ```bash
-git clone git@github.com:rithulkamesh/licensify.git
+git clone https://github.com/rithulkamesh/licensify.git
 cd licensify/server
 export DATABASE_URL='postgres://licensify:licensify@localhost:5432/licensify?sslmode=disable'
 export LICENSIFY_API_KEY='dev'
 go run ./cmd/licensify-server
 ```
 
-### End-to-end smoke test app
-
-```bash
-cd examples/demo-app
-go run .
-```
-
 ## SDK install (pick your language)
 
-All SDKs live in this repo. Start by cloning once:
-
-```bash
-git clone git@github.com:rithulkamesh/licensify.git
-cd licensify
-```
-
-### Go (easiest)
-
-Install:
+### Go
 
 ```bash
 go get github.com/rithulkamesh/licensify/sdk/go@main
 ```
-
-Use:
 
 ```go
 import "github.com/rithulkamesh/licensify/sdk/go/licensify"
 ```
 
 ### Rust
-
-Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
@@ -81,20 +65,9 @@ licensify-client-sdk-rust = { git = "https://github.com/rithulkamesh/licensify",
 
 ### TypeScript / Node.js
 
-One-command install from any Node/TS repo:
-
 ```bash
 curl -fsSL https://raw.githubusercontent.com/rithulkamesh/licensify/main/scripts/install-licensify-ts.sh | bash
 ```
-
-What it does:
-
-- vendors the SDK into `.licensify/typescript-sdk`
-- builds it
-- wires `@licensify/sdk` into your `package.json` as a local file dependency
-- keeps reruns idempotent (safe update path)
-
-Use:
 
 ```ts
 import { LicensifyClient } from "@licensify/sdk";
@@ -102,30 +75,31 @@ import { LicensifyClient } from "@licensify/sdk";
 
 ### C / C++ / Zig
 
-Build the native core once:
-
 ```bash
 cargo build -p licensify-client
 ```
 
-Then use:
-
 - C header: `client/include/licensify.h`
-- C shim header: `sdk/c/include/licensify_c.h`
+- C shim: `sdk/c/include/licensify_c.h`
 - C++ wrapper: `sdk/cpp/include/licensify.hpp`
 - Zig wrapper: `sdk/zig/src/licensify.zig`
 
-Link your app against the generated `liblicensify` from the Rust client build output.
+Link your app against the generated `liblicensify` from the Rust build output.
+
+## Repository layout
+
+| Directory | Description |
+|-----------|-------------|
+| `server/` | Go licensing API (Echo + pgx) |
+| `client/` | Rust client core + C FFI (`licensify_*`) |
+| `sdk/` | Language SDKs wrapping the C ABI |
+| `proto/` | Shared protocol contracts |
+| `docs/` | Architecture, protocol, integration |
+| `examples/` | Smoke tests and usage snippets |
 
 ## Development & testing
 
-Licensify enforces 100% line coverage on every component (server, all SDKs,
-MCP server, examples). See [`docs/testing.md`](docs/testing.md) for the
-authoritative how-to-run-everything-locally guide and
-[`docs/coverage-exclusions.md`](docs/coverage-exclusions.md) for the ledger of
-all justified exclusions.
-
-Quick smoke per component:
+100% line coverage is enforced on every component. See [`docs/testing.md`](docs/testing.md) and [`docs/coverage-exclusions.md`](docs/coverage-exclusions.md).
 
 ```bash
 # Rust workspace + 100% gate
@@ -144,7 +118,14 @@ cd mcp/licensify && npm ci && npm test
 bash examples/_e2e/run.sh
 ```
 
-## OSS
+## Contributing
 
-- Contributing: `CONTRIBUTING.md`
-- Security: `SECURITY.md`
+Contributions are welcome! Please read [`CONTRIBUTING.md`](CONTRIBUTING.md) for guidelines.
+
+## Security
+
+Report vulnerabilities per [`SECURITY.md`](SECURITY.md).
+
+## License
+
+[MIT](LICENSE) &copy; Rithul Kamesh

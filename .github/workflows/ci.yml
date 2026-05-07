@@ -95,7 +95,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: liblicensify-debug-linux
-          path: target/debug
+          path: .
       - name: Run Go SDK tests
         working-directory: sdk/go
         env:
@@ -138,7 +138,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: liblicensify-debug-linux
-          path: target/debug
+          path: .
       - name: Install clang + tools
         run: sudo apt-get update -y && sudo apt-get install -y clang llvm cmake
       - name: Configure + build C SDK tests
@@ -171,7 +171,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: liblicensify-debug-linux
-          path: target/debug
+          path: .
       - name: Install clang + tools
         run: sudo apt-get update -y && sudo apt-get install -y clang llvm cmake
       - name: Configure + build C++ SDK tests
@@ -205,10 +205,9 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: liblicensify-debug-linux
-          path: target/debug
-      - name: Install zig + kcov
+          path: .
+      - name: Install zig
         run: |
-          sudo apt-get update -y && sudo apt-get install -y kcov
           curl -L https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz -o zig.tar.xz
           tar xf zig.tar.xz
           echo "$PWD/zig-linux-x86_64-0.13.0" >> $GITHUB_PATH
@@ -232,7 +231,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: liblicensify-debug-linux
-          path: target/debug
+          path: .
       - name: Build SDK
         working-directory: sdk/typescript
         run: |

@@ -75,7 +75,7 @@ assert_contains "$out" "rust-client-example: success"
 
 # 4) typescript example
 echo "::: examples/typescript"
-(cd examples/typescript && npm ci && npm run build)
+(cd examples/typescript && npm install && npm run build)
 out=$(node examples/typescript/dist/index.js)
 echo "$out"
 assert_contains "$out" "ts-example: success"
@@ -83,7 +83,7 @@ assert_contains "$out" "ts-example: success"
 # 5) mcp-agent example
 echo "::: examples/mcp-agent"
 (cd mcp/licensify && npm ci && npm run build)
-(cd examples/mcp-agent && npm ci && npm run build)
+(cd examples/mcp-agent && npm install && npm run build)
 out=$(LICENSIFY_LICENSE_KEY="$LICENSE_KEY" node examples/mcp-agent/dist/run.js)
 echo "$out"
 assert_contains "$out" "summary:"
