@@ -75,6 +75,7 @@ assert_contains "$out" "rust-client-example: success"
 
 # 4) typescript example
 echo "::: examples/typescript"
+(cd sdk/typescript && npm ci && npm run build)
 (cd examples/typescript && npm install && npm run build)
 out=$(node examples/typescript/dist/index.js)
 echo "$out"

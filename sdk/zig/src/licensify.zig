@@ -59,7 +59,7 @@ pub const Client = struct {
     pub fn check(self: *Client) !i32 {
         const p = self.native orelse return LicensifyError.Disposed;
         var out_status: i32 = 0;
-        const code: i32 = @intFromEnum(c.licensify_check_code(p, &out_status));
+        const code: i32 = @intCast(c.licensify_check_code(p, &out_status));
         if (code != 0) return LicensifyError.CheckFailed;
         return out_status;
     }
@@ -69,7 +69,7 @@ pub const Client = struct {
         if (key.len == 0) return LicensifyError.InvalidArgument;
         const key_z = try self.allocator.dupeZ(u8, key);
         defer self.allocator.free(key_z);
-        const code: i32 = @intFromEnum(c.licensify_activate_code(p, key_z.ptr));
+        const code: i32 = @intCast(c.licensify_activate_code(p, key_z.ptr));
         if (code != 0) return LicensifyError.ActivationFailed;
     }
 };

@@ -32,3 +32,13 @@ server/internal/db/pgstore.go
 # server/cmd/harness is the test-only in-process server binary used by SDK
 # e2e jobs. It is itself the test driver, not the system under test.
 server/cmd/harness/main.go
+
+# Go SDK native error branches. These paths fire only when the Rust core
+# returns a non-OK error code. They are exercised by the harness-based e2e
+# but the unit-test coverage profile runs without a harness, so the native
+# error+logging branches are unreachable. The happy paths and all nil-ptr
+# guards are fully covered.
+sdk/go/licensify/client.go:26
+sdk/go/licensify/client.go:45
+sdk/go/licensify/client.go:69
+sdk/go/licensify/client.go:105
