@@ -23,9 +23,10 @@
  * ```
  */
 
+import { createRequire } from "node:module";
 import type { Config, NativeBindings, Status, ErrorCode } from "./types.js";
 
-declare const require: (name: string) => any;
+const require = createRequire(import.meta.url);
 
 export class LicensifySdkError extends Error {
   public readonly code: ErrorCode;
