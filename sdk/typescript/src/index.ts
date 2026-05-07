@@ -65,7 +65,7 @@ function defaultClock() {
  */
 function loadNative(): NativeBindings {
   const koffi = require("koffi");
-  const lib = koffi.load("licensify");
+  const lib = koffi.load("liblicensify");
 
   koffi.struct("licensify_config_t", {
     server_url: "const char *",
