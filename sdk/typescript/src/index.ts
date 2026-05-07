@@ -27,7 +27,6 @@ import { createRequire } from "node:module";
 import type { Config, NativeBindings, Status, ErrorCode } from "./types.js";
 
 const require = createRequire(import.meta.url);
-
 export class LicensifySdkError extends Error {
   public readonly code: ErrorCode;
   public readonly metadata?: Record<string, unknown>;
@@ -61,46 +60,47 @@ function defaultClock() {
   return { nowMs: () => Date.now() };
 }
 
-/* c8 ignore start -- loadNative() requires `ffi-napi` + the native shared lib;
+/* c8 ignore start -- loadNative() requires `koffi` + the native shared lib;
  * we exercise it from a separate native-only e2e test gated on LICENSIFY_NATIVE=1.
  */
 function loadNative(): NativeBindings {
-  const ffi = require("ffi-napi");
-  const ref = require("ref-napi");
-  const voidPtr = ref.refType(ref.types.void);
+  const koffi = require("koffi");
+  const lib = koffi.load("licensify");
 
-  const lib = ffi.Library("liblicensify", {
-    licensify_new: [voidPtr, [voidPtr]],
-    licensify_free: ["void", [voidPtr]],
-    licensify_activate_code: ["int", [voidPtr, "string"]],
-    licensify_check_code: ["int", [voidPtr, voidPtr]],
-    licensify_has_feature: ["bool", [voidPtr, "string"]],
-    licensify_last_error: ["string", [voidPtr]],
+  koffi.struct("licensify_config_t", {
+    server_url: "const char *",
+    cache_path: "const char *",
   });
+
+  const licensify_new = lib.func("licensify_new", "void *", ["licensify_config_t *"]);
+  const licensify_free = lib.func("licensify_free", "void", ["void *"]);
+  const licensify_activate_code = lib.func("licensify_activate_code", "int", ["void *", "const char *"]);
+  const licensify_check_code = lib.func("licensify_check_code", "int", ["void *", "int *"]);
+  const licensify_has_feature = lib.func("licensify_has_feature", "bool", ["void *", "const char *"]);
+  const licensify_last_error = lib.func("licensify_last_error", "const char *", ["void *"]);
 
   return {
     newClient(serverUrl: string, cachePath: string) {
-      const _ = { serverUrl, cachePath };
-      return lib.licensify_new(Buffer.alloc(16)) as Buffer;
+      const cfg = { server_url: serverUrl, cache_path: cachePath };
+      return licensify_new(cfg);
     },
-    free(ptr: Buffer) {
-      lib.licensify_free(ptr);
+    free(ptr: unknown) {
+      licensify_free(ptr);
     },
-    activateCode(ptr: Buffer, key: string) {
-      return lib.licensify_activate_code(ptr, key) as ErrorCode;
+    activateCode(ptr: unknown, key: string) {
+      return licensify_activate_code(ptr, key) as ErrorCode;
     },
-    checkCode(ptr: Buffer) {
-      const out = Buffer.alloc(4);
-      const code = lib.licensify_check_code(ptr, out) as ErrorCode;
-      const status = out.readInt32LE(0) as 0 | 1;
-      return { code, status };
+    checkCode(ptr: unknown) {
+      const out = new Int32Array(1);
+      const code = licensify_check_code(ptr, out) as ErrorCode;
+      return { code, status: out[0] as 0 | 1 };
     },
-    hasFeature(ptr: Buffer, feature: string) {
-      return lib.licensify_has_feature(ptr, feature) as boolean;
+    hasFeature(ptr: unknown, feature: string) {
+      return licensify_has_feature(ptr, feature) as boolean;
     },
-    lastError(ptr: Buffer) {
+    lastError(ptr: unknown) {
       try {
-        const s = lib.licensify_last_error(ptr) as string;
+        const s = licensify_last_error(ptr) as string;
         return s && s.length > 0 ? s : null;
       } catch {
         return null;
@@ -114,9 +114,9 @@ export class LicensifyClient {
   private readonly native: NativeBindings;
   private readonly clock: { nowMs: () => number };
   private readonly logger: Config["logger"];
-  private ptr: Buffer | null;
+  private ptr: unknown;
 
-  private constructor(private readonly config: Config, native: NativeBindings, ptr: Buffer) {
+  private constructor(private readonly config: Config, native: NativeBindings, ptr: unknown) {
     this.native = native;
     this.clock = config.clock ?? defaultClock();
     this.logger = config.logger;
@@ -150,7 +150,7 @@ export class LicensifyClient {
     }
   }
 
-  private requireOpen(): Buffer {
+  private requireOpen(): unknown {
     if (!this.ptr) throw new InitializationError("client is disposed");
     return this.ptr;
   }

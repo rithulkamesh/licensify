@@ -99,7 +99,7 @@ test("create rejects empty serverUrl/cachePath", async () => {
 
 test("create rejects null pointer", async () => {
   const native: NativeBindings = makeStubNative({
-    newClient: () => null as unknown as Buffer,
+    newClient: () => null,
   }).native;
   await assert.rejects(() => LicensifyClient.create(baseConfig(native)), InitializationError);
 });

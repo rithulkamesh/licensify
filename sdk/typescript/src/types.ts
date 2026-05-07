@@ -38,10 +38,10 @@ export type Status = {
 export type ErrorCode = 0 | 1 | 2 | 3 | 4;
 
 export type NativeBindings = {
-  activateCode: (ptr: Buffer, key: string) => ErrorCode;
-  checkCode: (ptr: Buffer) => { code: ErrorCode; status: StatusCode };
-  hasFeature: (ptr: Buffer, feature: string) => boolean;
-  free: (ptr: Buffer) => void;
-  lastError: (ptr: Buffer) => string | null;
-  newClient: (serverUrl: string, cachePath: string) => Buffer;
+  activateCode: (ptr: unknown, key: string) => ErrorCode;
+  checkCode: (ptr: unknown) => { code: ErrorCode; status: StatusCode };
+  hasFeature: (ptr: unknown, feature: string) => boolean;
+  free: (ptr: unknown) => void;
+  lastError: (ptr: unknown) => string | null;
+  newClient: (serverUrl: string, cachePath: string) => unknown;
 };
