@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: MIT
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: licensify
+      POSTGRES_PASSWORD: licensify
+      POSTGRES_DB: licensify
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U licensify -d licensify"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  server:
+    build:
+      context: ./server
+    environment:
+      DATABASE_URL: postgres://licensify:licensify@postgres:5432/licensify?sslmode=disable
+      LICENSIFY_API_KEY: dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/v1/health >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  pgdata: {}
+

@@ -1,0 +1,8 @@
+language = "C"
+include_guard = "LICENSIFY_H"
+pragma_once = true
+sys_includes = ["stdbool.h", "stdint.h"]
+include_version = true
+
+[export]
+prefix = "licensify_"

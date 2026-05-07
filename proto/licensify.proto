@@ -1,0 +1,130 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Rithul Kamesh
+// Author: Rithul Kamesh <hi@rithul.dev>
+// Description: proto/licensify.proto — Protocol contracts shared between Licensify client SDKs and server.
+
+syntax = "proto3";
+
+package licensify.v1;
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+enum LicenseType {
+  LICENSE_TYPE_UNSPECIFIED = 0;
+  LICENSE_TYPE_PERPETUAL = 1;
+  LICENSE_TYPE_SUBSCRIPTION = 2;
+  LICENSE_TYPE_FLOATING_SEAT = 3;
+  LICENSE_TYPE_TRIAL = 4;
+  LICENSE_TYPE_FEATURE_FLAGGED = 5;
+}
+
+enum ValidationSource {
+  VALIDATION_SOURCE_UNSPECIFIED = 0;
+  VALIDATION_SOURCE_ONLINE = 1;
+  VALIDATION_SOURCE_OFFLINE_CACHE = 2;
+}
+
+message Entitlements {
+  LicenseType license_type = 1;
+  repeated string features = 2;
+  optional uint32 seat_count = 3;
+  optional uint32 max_activations = 4;
+  optional int64 trial_ends_at = 5;
+  optional int64 subscription_expires_at = 6;
+  uint32 offline_grace_days = 7;
+  google.protobuf.Struct custom_metadata = 8;
+}
+
+message ActivationRequest {
+  string license_key = 1;
+  bytes machine_id = 2;
+  map<string, string> hardware_components = 3;
+  bytes opaque_registration_request = 4;
+  bytes opaque_registration_upload = 5;
+}
+
+message ActivationResponse {
+  string license_id = 1;
+  bytes leaf_certificate_der = 2;
+  bytes intermediate_certificate_der = 3;
+  bytes opaque_registration_response = 4;
+  Entitlements entitlements = 5;
+}
+
+message ValidateRequest {
+  string license_key = 1;
+  bytes machine_id = 2;
+  map<string, string> hardware_components = 3;
+  bytes opaque_login_request = 4;
+  bytes client_nonce = 5;
+}
+
+message ValidateResponse {
+  bytes opaque_login_response = 1;
+  bytes license_token = 2;
+  int64 issued_at = 3;
+  int64 expires_at = 4;
+  Entitlements entitlements = 5;
+}
+
+message DeactivateRequest {
+  string license_id = 1;
+  bytes machine_id = 2;
+}
+
+message DeactivateResponse {
+  bool success = 1;
+}
+
+message CreateLicenseRequest {
+  string license_key = 1;
+  LicenseType license_type = 2;
+  Entitlements entitlements = 3;
+  optional int64 expires_at = 4;
+}
+
+message UpdateLicenseRequest {
+  string id = 1;
+  Entitlements entitlements = 2;
+  optional int64 expires_at = 3;
+  bool revoked = 4;
+}
+
+message LicenseMetadataResponse {
+  string id = 1;
+  LicenseType license_type = 2;
+  Entitlements entitlements = 3;
+  bool revoked = 4;
+  optional int64 expires_at = 5;
+  google.protobuf.Timestamp created_at = 6;
+}
+
+message SeatStatusResponse {
+  string license_id = 1;
+  uint32 seat_count = 2;
+  uint32 active_seats = 3;
+  repeated string machine_ids = 4;
+}
+
+message SeatAcquireRequest {
+  string machine_id = 1;
+}
+
+message SeatReleaseRequest {
+  string machine_id = 1;
+}
+
+message SeatOperationResponse {
+  bool success = 1;
+  uint32 active_seats = 2;
+}
+
+message HealthResponse {
+  string status = 1;
+  string version = 2;
+}
+
+message CaResponse {
+  bytes root_ca_der = 1;
+}

@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: MIT
+
+# Rust
+/target
+**/target
+Cargo.lock
+
+# Go
+**/*.test
+**/*.out
+
+# Node
+node_modules
+dist
+.turbo
+.vite
+
+# OS
+.DS_Store
+
+# IDE
+.vscode
+.idea
+
+# Secrets / local env
+.env
+.env.*
