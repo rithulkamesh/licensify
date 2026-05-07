@@ -1,0 +1,34 @@
+# Documented coverage exclusions for the Go server. Each entry is matched as a
+# substring against the `path:line:` prefix that `go tool cover -func` emits.
+# Every exclusion below is justified in docs/coverage-exclusions.md.
+
+# main() is a one-line wrapper around entrypoint(); entrypoint() has full
+# coverage via injectable seams in cmd/licensify-server/main_test.go.
+server/cmd/licensify-server/main.go:35
+
+# All the err returns below are crypto/rand or x509.CreateCertificate failures;
+# they cannot be triggered without injecting a broken /dev/urandom or x509
+# package, which is out of scope. The happy paths and structural assertions are
+# fully covered.
+server/internal/auth/service.go:36
+server/internal/ca/ca.go:36
+server/internal/ca/ca.go:98
+server/internal/token/token.go:29
+
+# Default Listener inside Run() is exercised by the integration harness (see
+# server/cmd/harness/main.go). The unit tests inject a fake listener instead.
+server/internal/server/run.go:38
+
+# api.activate's IssueLeaf error branch — fails only on x509/crypto failure.
+server/internal/api/server.go:134
+
+# MemStore.Close has no statements (nil body); Go reports 0/0 as 0.0%.
+server/internal/db/memstore.go:85
+
+# PgStore is exercised against a real Postgres instance in CI (LICENSIFY_TEST_DATABASE_URL).
+# Locally the tests skip and these functions read 0%.
+server/internal/db/pgstore.go
+
+# server/cmd/harness is the test-only in-process server binary used by SDK
+# e2e jobs. It is itself the test driver, not the system under test.
+server/cmd/harness/main.go

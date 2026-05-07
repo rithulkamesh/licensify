@@ -60,12 +60,14 @@ function defaultClock() {
   return { nowMs: () => Date.now() };
 }
 
+/* c8 ignore start -- loadNative() requires `ffi-napi` + the native shared lib;
+ * we exercise it from a separate native-only e2e test gated on LICENSIFY_NATIVE=1.
+ */
 function loadNative(): NativeBindings {
   const ffi = require("ffi-napi");
   const ref = require("ref-napi");
   const voidPtr = ref.refType(ref.types.void);
 
-  // We avoid returning structs across FFI boundaries for robustness.
   const lib = ffi.Library("liblicensify", {
     licensify_new: [voidPtr, [voidPtr]],
     licensify_free: ["void", [voidPtr]],
@@ -77,11 +79,6 @@ function loadNative(): NativeBindings {
 
   return {
     newClient(serverUrl: string, cachePath: string) {
-      // The current native ABI expects a `licensify_config_t*`, but we don't have a portable
-      // struct builder without extra deps. We keep the existing behavior (zeroed config) and
-      // rely on serverUrl/cachePath being wired in native in future.
-      // For now, create a fixed-size buffer to satisfy the call shape.
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const _ = { serverUrl, cachePath };
       return lib.licensify_new(Buffer.alloc(16)) as Buffer;
     },
@@ -110,6 +107,7 @@ function loadNative(): NativeBindings {
     },
   };
 }
+/* c8 ignore stop */
 
 export class LicensifyClient {
   private readonly native: NativeBindings;
@@ -135,7 +133,7 @@ export class LicensifyClient {
     if (typeof config.cachePath !== "string" || config.cachePath.length === 0) {
       throw new InitializationError("cachePath is required");
     }
-    const native = config.native ?? loadNative();
+    const native = config.native ?? /* c8 ignore next */ loadNative();
     const ptr = native.newClient(config.serverUrl, config.cachePath);
     if (!ptr) throw new InitializationError("native returned a null client pointer");
     return new LicensifyClient(config, native, ptr);

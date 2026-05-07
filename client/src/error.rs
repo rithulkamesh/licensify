@@ -28,3 +28,31 @@ impl From<std::io::Error> for LicenseError {
         Self::Io(value.to_string())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn from_io_error_uses_io_variant() {
+        let io = std::io::Error::new(std::io::ErrorKind::Other, "boom");
+        let e: LicenseError = io.into();
+        assert!(matches!(e, LicenseError::Io(_)));
+    }
+
+    #[test]
+    fn display_messages_for_every_variant() {
+        let cases: &[(LicenseError, &str)] = &[
+            (LicenseError::Io("io".into()), "io error: io"),
+            (LicenseError::Network("nw".into()), "network error: nw"),
+            (LicenseError::Crypto("c".into()), "crypto error: c"),
+            (LicenseError::InvalidToken, "invalid token"),
+            (LicenseError::Expired, "expired token"),
+            (LicenseError::InvalidCertificate, "invalid certificate"),
+            (LicenseError::Inactive, "license inactive"),
+        ];
+        for (err, want) in cases {
+            assert_eq!(err.to_string(), *want);
+        }
+    }
+}

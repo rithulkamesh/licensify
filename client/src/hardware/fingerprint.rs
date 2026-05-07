@@ -48,3 +48,36 @@ pub fn machine_id_bytes() -> [u8; 32] {
 pub fn machine_id_hex() -> String {
     hex::encode(machine_id_bytes())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serial_test::serial;
+
+    #[test]
+    #[serial]
+    fn machine_id_is_stable_for_same_env() {
+        std::env::set_var("LICENSIFY_DISK_SERIAL", "stable-disk");
+        std::env::set_var("LICENSIFY_BOARD_UUID", "stable-board");
+        std::env::set_var("LICENSIFY_MAC", "AA:AA:AA:AA:AA:AA");
+        std::env::set_var("LICENSIFY_MACHINE_ID", "stable-mid");
+        std::env::set_var("LICENSIFY_GPU_ID", "stable-gpu");
+        std::env::remove_var("LICENSIFY_TPM_EK_SEED");
+        let a = machine_id_bytes();
+        let b = machine_id_bytes();
+        assert_eq!(a, b);
+        let h = machine_id_hex();
+        assert_eq!(h.len(), 64);
+    }
+
+    #[test]
+    #[serial]
+    fn collect_components_includes_tpm_when_set() {
+        std::env::set_var("LICENSIFY_TPM_EK_SEED", "tpm-seed");
+        let c = collect_components();
+        assert!(c.tpm_ek_fingerprint.is_some());
+        std::env::remove_var("LICENSIFY_TPM_EK_SEED");
+        let c2 = collect_components();
+        assert!(c2.tpm_ek_fingerprint.is_none());
+    }
+}

@@ -23,7 +23,7 @@ import (
 
 type Server struct {
 	Echo    *echo.Echo
-	store   *db.Store
+	store   db.Store
 	license *license.Service
 	auth    *auth.Service
 	ca      *ca.Authority
@@ -32,7 +32,7 @@ type Server struct {
 	seats   map[string]map[string]time.Time
 }
 
-func New(store *db.Store, authority *ca.Authority, apiKey string) *Server {
+func New(store db.Store, authority *ca.Authority, apiKey string) *Server {
 	e := echo.New()
 	s := &Server{
 		Echo:    e,

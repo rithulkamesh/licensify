@@ -7,15 +7,16 @@
   "main": "dist/server.js",
   "scripts": {
     "build": "npm --prefix ../../sdk/typescript ci && npm --prefix ../../sdk/typescript run build && tsc -p tsconfig.json",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "test": "tsc -p tsconfig.json && c8 --reporter=text --reporter=lcov --check-coverage --100 --include 'dist/handlers.js' --include 'dist/server.js' node --test dist/handlers.test.js dist/server.test.js"
   },
   "dependencies": {
-    "@modelcontextprotocol/server": "^1.1.0",
-    "zod": "^4.24.0"
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^4.4.0"
   },
   "devDependencies": {
     "@types/node": "^22.13.10",
+    "c8": "^10.1.2",
     "typescript": "^5.6.3"
   }
 }
-

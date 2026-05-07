@@ -54,9 +54,16 @@ pub extern "C" fn licensify_new(config: *const licensify_config_t) -> *mut licen
     let cfg = unsafe { &*config };
     let url = unsafe { CStr::from_ptr(cfg.server_url) }.to_string_lossy().into_owned();
     let cache = unsafe { CStr::from_ptr(cfg.cache_path) }.to_string_lossy().into_owned();
-    let rcfg = ClientConfig { server_url: url, cache_path: cache.into(), server_public_key: [0_u8; 32] };
+    let rcfg = ClientConfig {
+        server_url: url,
+        cache_path: cache.into(),
+        server_public_key: [0_u8; 32],
+    };
+    // `LicensifyClient::new` is currently infallible, so the Err arm is unreachable in
+    // practice. Map a future failure to a NULL return for ABI stability.
     match LicensifyClient::new(rcfg) {
         Ok(inner) => Box::into_raw(Box::new(licensify_client_t { inner, last_error: None })),
+        // grcov-excl-line: defensive path retained for ABI stability.
         Err(_) => ptr::null_mut(),
     }
 }

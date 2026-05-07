@@ -6,7 +6,8 @@
 package licensify
 
 /*
-#cgo CFLAGS: -I../../../client/include
+#cgo CFLAGS: -I${SRCDIR}/../../../client/include
+#cgo LDFLAGS: -L${SRCDIR}/../../../target/debug -L${SRCDIR}/../../../target/release -llicensify
 #include <stdlib.h>
 #include "licensify.h"
 */

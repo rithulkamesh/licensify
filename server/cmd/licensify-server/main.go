@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Rithul Kamesh
 // Author: Rithul Kamesh <hi@rithul.dev>
-// Description: server/cmd/licensify-server/main.go — CLI entrypoint for running the Licensify server.
+// Description: server/cmd/licensify-server/main.go — CLI entrypoint delegating wiring to internal/server.Run for testability.
 
 package main
 
@@ -10,24 +10,28 @@ import (
 	"log"
 	"os"
 
-	"github.com/rithulkamesh/licensify/server/internal/api"
-	"github.com/rithulkamesh/licensify/server/internal/ca"
-	"github.com/rithulkamesh/licensify/server/internal/db"
+	"github.com/rithulkamesh/licensify/server/internal/server"
 )
 
+// runFn is a seam for tests so they can swap server.Run with a fake.
+var runFn = server.Run
+
+// fatalFn is a seam for tests so log.Fatal does not call os.Exit.
+var fatalFn = log.Fatal
+
+func entrypoint(env func(string) string) {
+	addr := env("LICENSIFY_LISTEN_ADDR")
+	if addr == "" {
+		addr = ":8080"
+	}
+	if err := runFn(context.Background(), server.Options{
+		Env:  env,
+		Addr: addr,
+	}); err != nil {
+		fatalFn(err)
+	}
+}
+
 func main() {
-	ctx := context.Background()
-	store, err := db.NewStore(ctx, os.Getenv("DATABASE_URL"))
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer store.Close()
-	authority, err := ca.NewAuthority()
-	if err != nil {
-		log.Fatal(err)
-	}
-	srv := api.New(store, authority, os.Getenv("LICENSIFY_API_KEY"))
-	if err := srv.Echo.Start(":8080"); err != nil {
-		log.Fatal(err)
-	}
+	entrypoint(os.Getenv)
 }

@@ -1,0 +1,13 @@
+[package]
+name = "rust-client-example"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[[bin]]
+name = "rust-client-example"
+path = "main.rs"
+
+[dependencies]
+licensify-client = { path = "../../client" }

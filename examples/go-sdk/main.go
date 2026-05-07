@@ -13,15 +13,23 @@ import (
 )
 
 func main() {
+	url := os.Getenv("LICENSIFY_BASE_URL")
+	if url == "" {
+		url = "http://localhost:8080"
+	}
+	key := os.Getenv("LICENSIFY_LICENSE_KEY")
+	if key == "" {
+		key = "LICENSE-KEY-DEV"
+	}
 	c, err := licensify.New(licensify.Config{
-		ServerURL: "http://localhost:8080",
+		ServerURL: url,
 		CachePath: os.TempDir() + "/licensify.token",
 	})
 	if err != nil {
 		panic(err)
 	}
 	defer c.Close()
-	if err := c.Activate("LICENSE-KEY-DEV"); err != nil {
+	if err := c.Activate(key); err != nil {
 		panic(err)
 	}
 	st, _ := c.Check()

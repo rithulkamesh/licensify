@@ -16,3 +16,26 @@ pub fn ek_fingerprint() -> Option<[u8; 32]> {
     }
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serial_test::serial;
+
+    #[test]
+    #[serial]
+    fn returns_some_when_env_set() {
+        std::env::set_var("LICENSIFY_TPM_EK_SEED", "deterministic-seed");
+        let a = ek_fingerprint().unwrap();
+        let b = ek_fingerprint().unwrap();
+        assert_eq!(a, b);
+        std::env::remove_var("LICENSIFY_TPM_EK_SEED");
+    }
+
+    #[test]
+    #[serial]
+    fn returns_none_when_env_unset() {
+        std::env::remove_var("LICENSIFY_TPM_EK_SEED");
+        assert!(ek_fingerprint().is_none());
+    }
+}

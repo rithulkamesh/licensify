@@ -9,8 +9,8 @@
 //! Prefer using this crate in Rust applications; other languages should use the stable C ABI.
 //!
 //! ```no_run
-//! use licensify_client_sdk_rust::{ClientConfig, LicensifyClient};
-//! # fn main() -> Result<(), licensify_client_sdk_rust::LicenseError> {
+//! use licensify_client_sdk_rust::{ClientConfig, LicensifyClient, LicenseError};
+//! # fn main() -> Result<(), LicenseError> {
 //! let cfg = ClientConfig {
 //!   server_url: "http://localhost:8080".to_string(),
 //!   cache_path: std::env::temp_dir().join("licensify.token"),
@@ -22,6 +22,40 @@
 //! # Ok(())
 //! # }
 //! ```
-pub use licensify_client::{
-    ActivationResult, ClientConfig, Entitlements, LicenseError, LicenseStatus, LicensifyClient, ValidationSource,
+pub use licensify::{
+    noop_integrity_check, ActivationResult, ClientConfig, Entitlements, LicenseError, LicenseStatus,
+    LicenseType, LicensifyClient, ValidationSource,
 };
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cfg() -> ClientConfig {
+        ClientConfig {
+            server_url: "http://localhost:0".into(),
+            cache_path: std::env::temp_dir().join("licensify-rust-sdk-test.token"),
+            server_public_key: [0u8; 32],
+        }
+    }
+
+    #[test]
+    fn re_export_lifecycle() {
+        let mut c = LicensifyClient::with_integrity_check(cfg(), noop_integrity_check()).unwrap();
+        let act = c.activate("KEY").unwrap();
+        assert!(matches!(act.entitlements.license_type, LicenseType::Perpetual));
+        assert!(c.has_feature("base"));
+        let _: ActivationResult = act;
+        let _: Entitlements = c.entitlements().unwrap();
+        let st = c.check().unwrap();
+        match st {
+            LicenseStatus::Valid { source, .. } => {
+                let _ = source == ValidationSource::OfflineCache;
+            }
+            LicenseStatus::Invalid => {}
+            _ => panic!("unexpected status"),
+        }
+        c.deactivate().unwrap();
+        assert!(matches!(c.entitlements(), Err(LicenseError::Inactive)));
+    }
+}
