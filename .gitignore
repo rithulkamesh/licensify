@@ -25,3 +25,9 @@ dist
 # Secrets / local env
 .env
 .env.*
+
+# Compiled example binaries (Go build output lands next to main.go)
+/examples/demo-app/demo-app
+/examples/go-sdk/go-sdk
+# Example npm lockfiles are not tracked (run.sh uses `npm install`)
+/examples/*/package-lock.json
