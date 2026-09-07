@@ -23,7 +23,7 @@ server/internal/server/run.go:39
 server/internal/api/server.go:165
 
 # MemStore.Close has no statements (nil body); Go reports 0/0 as 0.0%.
-server/internal/db/memstore.go:97
+server/internal/db/memstore.go:106
 
 # PgStore is exercised against a real Postgres instance in CI (LICENSIFY_TEST_DATABASE_URL).
 # Locally the tests skip and these functions read 0%.

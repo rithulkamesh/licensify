@@ -88,7 +88,7 @@ func main() {
 		ID string `json:"id"`
 	}
 	createReq := map[string]any{
-		"license_key":  "LICENSE-KEY-DEV",
+		"license_key":  "LICENSE-KEY-DEMO",
 		"license_type": "perpetual",
 		"entitlements": map[string]any{
 			"license_type":        "perpetual",
@@ -113,7 +113,7 @@ func main() {
 	_, _ = rand.Read(machine)
 	_, _ = rand.Read(opaqueUpload)
 	actReq := map[string]any{
-		"license_key": "LICENSE-KEY-DEV",
+		"license_key": "LICENSE-KEY-DEMO",
 		"machine_id":  base64.StdEncoding.EncodeToString(machine),
 		"opaque_registration_upload": base64.StdEncoding.EncodeToString(opaqueUpload),
 		"hardware_components": map[string]string{
@@ -131,7 +131,7 @@ func main() {
 	loginReq := make([]byte, 32)
 	_, _ = rand.Read(loginReq)
 	valReq := map[string]any{
-		"license_key":          "LICENSE-KEY-DEV",
+		"license_key":          "LICENSE-KEY-DEMO",
 		"machine_id":           base64.StdEncoding.EncodeToString(machine),
 		"opaque_login_request": base64.StdEncoding.EncodeToString(loginReq),
 		"client_nonce":         base64.StdEncoding.EncodeToString([]byte("demo")),

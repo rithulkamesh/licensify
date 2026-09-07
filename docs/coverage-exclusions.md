@@ -105,7 +105,7 @@ this file will be rejected.
   every SDK e2e test).
 - **Marker**: `scripts/coverage-allowlist.txt` entry.
 
-### Server: `internal/db/memstore.go:97` — `MemStore.Close`
+### Server: `internal/db/memstore.go:106` — `MemStore.Close`
 
 - **Reason**: `Close()` has no body (the in-memory store has no resources to
   release). `go test` reports 0/0 statements as 0.0% even though it is called

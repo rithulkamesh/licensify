@@ -36,6 +36,15 @@ func (s *MemStore) Create(_ context.Context, l license.License) (license.License
 	if _, ok := s.records[l.ID]; ok {
 		return license.License{}, errors.New("license already exists")
 	}
+	// Mirror the Postgres `key_hash ... UNIQUE` constraint so GetByKeyHash is
+	// never ambiguous.
+	if len(l.KeyHash) > 0 {
+		for _, existing := range s.records {
+			if bytes.Equal(existing.KeyHash, l.KeyHash) {
+				return license.License{}, errors.New("license key already registered")
+			}
+		}
+	}
 	s.records[l.ID] = l
 	return l, nil
 }

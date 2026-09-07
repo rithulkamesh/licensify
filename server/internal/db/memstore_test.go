@@ -53,6 +53,12 @@ func TestMemStoreGetByKeyHash(t *testing.T) {
 	if _, err := s.GetByKeyHash(ctx, []byte{0x00}); err == nil {
 		t.Fatal("expected not found for unknown key hash")
 	}
+
+	// A second license with the same key hash is rejected (mirrors the
+	// Postgres UNIQUE constraint).
+	if _, err := s.Create(ctx, license.License{ID: "k2", KeyHash: kh}); err == nil {
+		t.Fatal("expected duplicate key-hash create to fail")
+	}
 }
 
 func TestMemStoreOpaque(t *testing.T) {
