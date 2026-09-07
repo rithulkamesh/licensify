@@ -13,8 +13,8 @@
  *   LICENSIFY_LICENSE_KEY="LICENSE-KEY-DEV" node dist/run.js
  */
 
-import { Client } from "@modelcontextprotocol/client";
-import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
 type AnyJson = null | boolean | number | string | AnyJson[] | { [k: string]: AnyJson };
 

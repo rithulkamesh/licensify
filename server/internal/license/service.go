@@ -18,6 +18,7 @@ import (
 type Repository interface {
 	Create(context.Context, License) (License, error)
 	GetByID(context.Context, string) (License, error)
+	GetByKeyHash(context.Context, []byte) (License, error)
 	Update(context.Context, License) (License, error)
 }
 
@@ -55,6 +56,15 @@ func (s *Service) Create(ctx context.Context, key string, lt LicenseType, ent En
 
 func (s *Service) Get(ctx context.Context, id string) (License, error) {
 	return s.repo.GetByID(ctx, id)
+}
+
+// GetByKey resolves a license from its plaintext key. Client-facing endpoints
+// authenticate by key possession rather than the admin API key.
+func (s *Service) GetByKey(ctx context.Context, key string) (License, error) {
+	if key == "" {
+		return License{}, errors.New("license key required")
+	}
+	return s.repo.GetByKeyHash(ctx, HashLicenseKey(key))
 }
 
 func (s *Service) Update(ctx context.Context, l License) (License, error) {

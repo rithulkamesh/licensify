@@ -70,6 +70,14 @@ func TestPgStoreCRUDAndOpaque(t *testing.T) {
 		t.Fatal("expected not found")
 	}
 
+	byKey, err := s.GetByKeyHash(ctx, l.KeyHash)
+	if err != nil || byKey.ID != l.ID {
+		t.Fatalf("get by key hash: %v %v", byKey, err)
+	}
+	if _, err := s.GetByKeyHash(ctx, []byte{0xFF, 0xFE}); err == nil {
+		t.Fatal("expected not found for unknown key hash")
+	}
+
 	got.Revoked = true
 	if _, err := s.Update(ctx, got); err != nil {
 		t.Fatal(err)

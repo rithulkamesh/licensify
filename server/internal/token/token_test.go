@@ -8,7 +8,10 @@ package token
 import (
 	"bytes"
 	"crypto/ed25519"
+	"encoding/base64"
 	"encoding/binary"
+	"encoding/hex"
+	"strings"
 	"testing"
 	"time"
 )
@@ -99,5 +102,72 @@ func TestMarshalSignedAppendsSig(t *testing.T) {
 	out := marshalSigned(tok)
 	if !bytes.Equal(out[len(out)-64:], bytes.Repeat([]byte{0xFF}, 64)) {
 		t.Fatal("expected appended signature")
+	}
+}
+
+func TestSigningKeyFromEnvGeneratesWhenUnset(t *testing.T) {
+	env := func(string) string { return "" }
+	k1, err := SigningKeyFromEnv(env)
+	if err != nil || len(k1) != ed25519.PrivateKeySize {
+		t.Fatalf("unset: %v len=%d", err, len(k1))
+	}
+	k2, _ := SigningKeyFromEnv(env)
+	if bytes.Equal(k1, k2) {
+		t.Fatal("expected a fresh random key each call when unset")
+	}
+}
+
+func TestSigningKeyFromEnvAcceptsHexAndBase64Seeds(t *testing.T) {
+	seed := bytes.Repeat([]byte{0x2A}, ed25519.SeedSize)
+	want := ed25519.NewKeyFromSeed(seed)
+
+	hexKey, err := SigningKeyFromEnv(func(k string) string {
+		if k == SigningKeyEnv {
+			return "  " + hex.EncodeToString(seed) + "  "
+		}
+		return ""
+	})
+	if err != nil || !bytes.Equal(hexKey, want) {
+		t.Fatalf("hex seed: %v", err)
+	}
+
+	b64Key, err := SigningKeyFromEnv(func(k string) string {
+		if k == SigningKeyEnv {
+			return base64.StdEncoding.EncodeToString(seed)
+		}
+		return ""
+	})
+	if err != nil || !bytes.Equal(b64Key, want) {
+		t.Fatalf("base64 seed: %v", err)
+	}
+}
+
+func TestSigningKeyFromEnvRejectsBadSeeds(t *testing.T) {
+	cases := []string{
+		"zz-not-hex-or-base64-!!",       // neither hex nor base64
+		hex.EncodeToString([]byte{1, 2}), // valid hex, wrong length
+	}
+	for _, v := range cases {
+		if _, err := SigningKeyFromEnv(func(k string) string {
+			if k == SigningKeyEnv {
+				return v
+			}
+			return ""
+		}); err == nil {
+			t.Fatalf("expected error for seed %q", v)
+		}
+	}
+}
+
+func TestPublicKeyHex(t *testing.T) {
+	seed := bytes.Repeat([]byte{0x9}, ed25519.SeedSize)
+	key := ed25519.NewKeyFromSeed(seed)
+	got := PublicKeyHex(key)
+	if len(got) != 64 || strings.ToLower(got) != got {
+		t.Fatalf("unexpected hex pubkey: %q", got)
+	}
+	raw, err := hex.DecodeString(got)
+	if err != nil || !bytes.Equal(raw, key.Public().(ed25519.PublicKey)) {
+		t.Fatalf("pubkey hex does not round-trip: %v", err)
 	}
 }

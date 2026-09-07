@@ -13,6 +13,7 @@ import (
 	"github.com/rithulkamesh/licensify/server/internal/api"
 	"github.com/rithulkamesh/licensify/server/internal/ca"
 	"github.com/rithulkamesh/licensify/server/internal/db"
+	"github.com/rithulkamesh/licensify/server/internal/token"
 )
 
 // Env mirrors the os.Getenv signature so tests can inject configuration without
@@ -68,7 +69,12 @@ func Run(ctx context.Context, opts Options) error {
 		return err
 	}
 
-	srv := api.New(store, authority, opts.Env("LICENSIFY_API_KEY"))
+	tokenKey, err := token.SigningKeyFromEnv(opts.Env)
+	if err != nil {
+		return err
+	}
+
+	srv := api.New(store, authority, opts.Env("LICENSIFY_API_KEY"), tokenKey)
 	if err := listener(srv, opts.Addr); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}

@@ -106,14 +106,15 @@ func main() {
 	}
 	fmt.Println("license: created", created.ID)
 
-	// 3) Activate: store opaque record
+	// 3) Activate: store opaque record. The client surface authenticates by
+	//    license-key possession, not the admin API key.
 	machine := make([]byte, 32)
 	opaqueUpload := make([]byte, 32)
 	_, _ = rand.Read(machine)
 	_, _ = rand.Read(opaqueUpload)
 	actReq := map[string]any{
-		"license_id": created.ID,
-		"machine_id": base64.StdEncoding.EncodeToString(machine),
+		"license_key": "LICENSE-KEY-DEV",
+		"machine_id":  base64.StdEncoding.EncodeToString(machine),
 		"opaque_registration_upload": base64.StdEncoding.EncodeToString(opaqueUpload),
 		"hardware_components": map[string]string{
 			"cpuid_brand": "demo",
@@ -121,7 +122,7 @@ func main() {
 		},
 	}
 	var actResp map[string]any
-	if _, _, err := c.do(ctx, http.MethodPost, "/v1/activate", actReq, &actResp, true); err != nil {
+	if _, _, err := c.do(ctx, http.MethodPost, "/v1/activate", actReq, &actResp, false); err != nil {
 		panic(err)
 	}
 	fmt.Println("activate: ok (certs issued)")
@@ -130,7 +131,7 @@ func main() {
 	loginReq := make([]byte, 32)
 	_, _ = rand.Read(loginReq)
 	valReq := map[string]any{
-		"license_id":           created.ID,
+		"license_key":          "LICENSE-KEY-DEV",
 		"machine_id":           base64.StdEncoding.EncodeToString(machine),
 		"opaque_login_request": base64.StdEncoding.EncodeToString(loginReq),
 		"client_nonce":         base64.StdEncoding.EncodeToString([]byte("demo")),
@@ -138,7 +139,7 @@ func main() {
 	var valResp struct {
 		LicenseToken []byte `json:"license_token"`
 	}
-	if _, _, err := c.do(ctx, http.MethodPost, "/v1/validate", valReq, &valResp, true); err != nil {
+	if _, _, err := c.do(ctx, http.MethodPost, "/v1/validate", valReq, &valResp, false); err != nil {
 		panic(err)
 	}
 	if len(valResp.LicenseToken) == 0 {

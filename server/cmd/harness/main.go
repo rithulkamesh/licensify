@@ -20,15 +20,17 @@ import (
 	"github.com/rithulkamesh/licensify/server/internal/ca"
 	"github.com/rithulkamesh/licensify/server/internal/db"
 	"github.com/rithulkamesh/licensify/server/internal/license"
+	"github.com/rithulkamesh/licensify/server/internal/token"
 )
 
 // Descriptor is the contract every SDK e2e test consumes.
 // The path is configured via LICENSIFY_HARNESS_DESCRIPTOR (default /tmp/licensify-harness.json).
 type Descriptor struct {
-	BaseURL    string `json:"base_url"`
-	APIKey     string `json:"api_key"`
-	LicenseKey string `json:"license_key"`
-	LicenseID  string `json:"license_id"`
+	BaseURL        string `json:"base_url"`
+	APIKey         string `json:"api_key"`
+	LicenseKey     string `json:"license_key"`
+	LicenseID      string `json:"license_id"`
+	TokenPublicKey string `json:"token_public_key"`
 }
 
 func main() {
@@ -48,7 +50,11 @@ func main() {
 	if err != nil {
 		fail("ca: %v", err)
 	}
-	srv := api.New(store, authority, apiKey)
+	tokenKey, err := token.SigningKeyFromEnv(os.Getenv)
+	if err != nil {
+		fail("token key: %v", err)
+	}
+	srv := api.New(store, authority, apiKey, tokenKey)
 
 	// Seed a license up front so SDKs can exercise activate/check immediately.
 	seeded, err := license.NewService(store).Create(
@@ -64,10 +70,11 @@ func main() {
 	}
 
 	desc := Descriptor{
-		BaseURL:    baseURL,
-		APIKey:     apiKey,
-		LicenseKey: licenseKey,
-		LicenseID:  seeded.ID,
+		BaseURL:        baseURL,
+		APIKey:         apiKey,
+		LicenseKey:     licenseKey,
+		LicenseID:      seeded.ID,
+		TokenPublicKey: token.PublicKeyHex(tokenKey),
 	}
 	if err := writeDescriptor(descriptorPath, desc); err != nil {
 		fail("write descriptor: %v", err)

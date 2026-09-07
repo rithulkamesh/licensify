@@ -8,6 +8,7 @@
 #define LICENSIFY_H
 
 #include <stdbool.h>
+#include <stddef.h>
 
 typedef struct licensify_client_t licensify_client_t;
 
@@ -49,5 +50,24 @@ void licensify_clear_error(licensify_client_t* client);
 
 // Free a string allocated by Licensify (e.g., licensify_result_t.message).
 void licensify_string_free(char* s);
+
+// Optional hardening APIs. Existing callers need not use them; the ABI above is
+// unchanged.
+//
+// licensify_set_server_key: 64 hex chars of the server's Ed25519 token-signing
+//   public key, used for offline token verification. Also learned from the
+//   server during licensify_activate, or from LICENSIFY_SERVER_PUBLIC_KEY.
+// licensify_set_expected_digest: 64 hex chars of the expected SHA-256 of the
+//   host executable. Once set, licensify_check fails closed on mismatch. Also
+//   settable via LICENSIFY_EXPECTED_DIGEST.
+// Both return false on a null client or malformed hex.
+bool licensify_set_server_key(licensify_client_t* client, const char* hex_key);
+bool licensify_set_expected_digest(licensify_client_t* client, const char* hex_digest);
+
+// Verify a leaf -> intermediate -> root Ed25519 certificate chain (raw DER).
+// Returns 0 (valid), 1 (validation failed), or -1 (bad arguments).
+int licensify_verify_cert_chain(const unsigned char* root, size_t root_len,
+                                const unsigned char* intermediate, size_t intermediate_len,
+                                const unsigned char* leaf, size_t leaf_len);
 
 #endif

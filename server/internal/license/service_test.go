@@ -6,6 +6,7 @@
 package license
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"testing"
@@ -13,7 +14,7 @@ import (
 )
 
 type fakeRepo struct {
-	created License
+	created   License
 	createErr error
 	getErr    error
 	updateErr error
@@ -31,6 +32,15 @@ func (f *fakeRepo) GetByID(_ context.Context, id string) (License, error) {
 		return License{}, f.getErr
 	}
 	if f.created.ID == id {
+		return f.created, nil
+	}
+	return License{}, errors.New("not found")
+}
+func (f *fakeRepo) GetByKeyHash(_ context.Context, keyHash []byte) (License, error) {
+	if f.getErr != nil {
+		return License{}, f.getErr
+	}
+	if f.created.KeyHash != nil && bytes.Equal(f.created.KeyHash, keyHash) {
 		return f.created, nil
 	}
 	return License{}, errors.New("not found")
@@ -105,6 +115,22 @@ func TestGetAndUpdateDelegate(t *testing.T) {
 	upd, err := s.Update(context.Background(), got)
 	if err != nil || !upd.Revoked {
 		t.Fatalf("update: %v %v", upd, err)
+	}
+}
+
+func TestGetByKey(t *testing.T) {
+	repo := &fakeRepo{}
+	s := NewService(repo)
+	if _, err := s.GetByKey(context.Background(), ""); err == nil {
+		t.Fatal("expected error for empty key")
+	}
+	created, _ := s.Create(context.Background(), "the-key", Perpetual, Entitlements{}, nil)
+	got, err := s.GetByKey(context.Background(), "the-key")
+	if err != nil || got.ID != created.ID {
+		t.Fatalf("get by key: %v %v", got, err)
+	}
+	if _, err := s.GetByKey(context.Background(), "other-key"); err == nil {
+		t.Fatal("expected not found for unknown key")
 	}
 }
 

@@ -164,6 +164,65 @@ fn licensify_string_free_handles_null() {
 }
 
 #[test]
+fn licensify_set_server_key_validates_hex() {
+    let url = cstr("http://localhost:0");
+    let cache = cstr("/tmp/licensify-ffi-setkey.token");
+    let cfg = make_config(&url, &cache);
+    let p = licensify_new(&cfg);
+
+    assert!(!licensify_set_server_key(ptr::null_mut(), cstr(&"aa".repeat(32)).as_ptr()));
+    assert!(!licensify_set_server_key(p, cstr("not-hex").as_ptr()));
+    assert!(!licensify_set_server_key(p, ptr::null()));
+    assert!(licensify_set_server_key(p, cstr(&"ab".repeat(32)).as_ptr()));
+
+    licensify_free(p);
+}
+
+#[test]
+fn licensify_set_expected_digest_toggles_pin() {
+    let url = cstr("http://localhost:0");
+    let cache = cstr("/tmp/licensify-ffi-digest.token");
+    let _ = std::fs::remove_file("/tmp/licensify-ffi-digest.token");
+    let cfg = make_config(&url, &cache);
+    let p = licensify_new(&cfg);
+
+    assert!(!licensify_set_expected_digest(ptr::null_mut(), cstr(&"00".repeat(32)).as_ptr()));
+
+    // Pin a digest that cannot match the test binary -> check fails closed.
+    assert!(licensify_set_expected_digest(p, cstr(&"00".repeat(32)).as_ptr()));
+    let mut status: i32 = 0;
+    let code = licensify_check_code(p, &mut status);
+    assert!(matches!(code, licensify_error_code_t::LICENSIFY_ERR_CHECK));
+
+    // Clearing the pin (invalid hex) returns false but re-opens the gate.
+    assert!(!licensify_set_expected_digest(p, cstr("xyz").as_ptr()));
+    let code = licensify_check_code(p, &mut status);
+    assert!(matches!(code, licensify_error_code_t::LICENSIFY_OK));
+    assert_eq!(status, 1);
+
+    licensify_free(p);
+}
+
+#[test]
+fn licensify_verify_cert_chain_rejects_garbage_and_null() {
+    let bad = b"not-a-certificate";
+    let rc = unsafe {
+        licensify_verify_cert_chain(
+            bad.as_ptr(),
+            bad.len(),
+            bad.as_ptr(),
+            bad.len(),
+            bad.as_ptr(),
+            bad.len(),
+        )
+    };
+    assert_eq!(rc, 1);
+
+    let rc_null = unsafe { licensify_verify_cert_chain(ptr::null(), 0, bad.as_ptr(), bad.len(), bad.as_ptr(), bad.len()) };
+    assert_eq!(rc_null, -1);
+}
+
+#[test]
 fn token_cache_round_trip() {
     use ed25519_dalek::{Signer, SigningKey};
     use sha2::Digest;

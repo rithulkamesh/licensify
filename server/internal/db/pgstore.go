@@ -106,6 +106,23 @@ func (s *PgStore) GetByID(ctx context.Context, id string) (license.License, erro
 	return l, nil
 }
 
+func (s *PgStore) GetByKeyHash(ctx context.Context, keyHash []byte) (license.License, error) {
+	var l license.License
+	var entJSON []byte
+	var lt string
+	err := s.pool.QueryRow(ctx,
+		"select id, key_hash, opaque_record, license_type, entitlements, max_activations, created_at, expires_at, revoked from licenses where key_hash=$1", keyHash,
+	).Scan(&l.ID, &l.KeyHash, &l.OpaqueRecord, &lt, &entJSON, &l.MaxActivations, &l.CreatedAt, &l.ExpiresAt, &l.Revoked)
+	if err != nil {
+		return license.License{}, err
+	}
+	l.LicenseType = license.LicenseType(lt)
+	if err := json.Unmarshal(entJSON, &l.Entitlements); err != nil {
+		return license.License{}, err
+	}
+	return l, nil
+}
+
 func (s *PgStore) Update(ctx context.Context, l license.License) (license.License, error) {
 	entJSON, _ := json.Marshal(l.Entitlements)
 	tag, err := s.pool.Exec(ctx,

@@ -6,6 +6,7 @@
 package db
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"sync"
@@ -47,6 +48,17 @@ func (s *MemStore) GetByID(_ context.Context, id string) (license.License, error
 		return license.License{}, errors.New("license not found")
 	}
 	return l, nil
+}
+
+func (s *MemStore) GetByKeyHash(_ context.Context, keyHash []byte) (license.License, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, l := range s.records {
+		if bytes.Equal(l.KeyHash, keyHash) {
+			return l, nil
+		}
+	}
+	return license.License{}, errors.New("license not found")
 }
 
 func (s *MemStore) Update(_ context.Context, l license.License) (license.License, error) {

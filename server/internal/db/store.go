@@ -17,6 +17,7 @@ import (
 type Store interface {
 	Create(ctx context.Context, l license.License) (license.License, error)
 	GetByID(ctx context.Context, id string) (license.License, error)
+	GetByKeyHash(ctx context.Context, keyHash []byte) (license.License, error)
 	Update(ctx context.Context, l license.License) (license.License, error)
 	StoreOpaqueRecord(ctx context.Context, licenseID string, record []byte) error
 	GetOpaqueRecord(ctx context.Context, licenseID string) ([]byte, error)

@@ -7,6 +7,20 @@ use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 
 use crate::error::LicenseError;
 
+/// The only license-token wire version this client understands. The version byte
+/// is covered by the signature, but we still reject unknown versions up front so
+/// a downgraded/forged prefix can never select a weaker parser in the future.
+pub const TOKEN_VERSION: u8 = 1;
+
+/// Clock-skew tolerance (seconds) applied to the not-before / not-after checks so
+/// a client whose wall clock is a little ahead of the issuer does not spuriously
+/// reject a freshly minted token.
+pub const CLOCK_SKEW_SECS: i64 = 60;
+
+/// Hard ceiling on the entitlements blob so a malformed length field can never
+/// make us allocate an unreasonable buffer before signature verification.
+pub const MAX_ENTITLEMENTS_LEN: usize = 64 * 1024;
+
 #[derive(Debug, Clone)]
 pub struct LicenseToken {
     pub version: u8,
@@ -38,6 +52,9 @@ pub fn parse(data: &[u8]) -> Result<LicenseToken, LicenseError> {
     at += 8;
     let ent_len = u32::from_be_bytes(data[at..at + 4].try_into().map_err(|_| LicenseError::InvalidToken)?) as usize;
     at += 4;
+    if ent_len > MAX_ENTITLEMENTS_LEN {
+        return Err(LicenseError::InvalidToken);
+    }
     if at + ent_len + 32 + 64 > data.len() {
         return Err(LicenseError::InvalidToken);
     }
@@ -53,13 +70,27 @@ pub fn parse(data: &[u8]) -> Result<LicenseToken, LicenseError> {
 
 pub fn verify(token_bytes: &[u8], pubkey_bytes: &[u8; 32], now: i64) -> Result<LicenseToken, LicenseError> {
     let token = parse(token_bytes)?;
+    // Reject unknown wire versions before trusting any other field.
+    if token.version != TOKEN_VERSION {
+        return Err(LicenseError::InvalidToken);
+    }
+    // `issued_at` must not be after `expires_at`, and the signed window must be
+    // internally sane — a token that expires before it was issued is malformed.
+    if token.issued_at > token.expires_at {
+        return Err(LicenseError::InvalidToken);
+    }
     let body_len = token_bytes.len().saturating_sub(64);
     let verifying_key = VerifyingKey::from_bytes(pubkey_bytes).map_err(|e| LicenseError::Crypto(e.to_string()))?;
     let sig = Signature::from_bytes(&token.signature);
     verifying_key
         .verify(&token_bytes[..body_len], &sig)
         .map_err(|_| LicenseError::InvalidToken)?;
-    if now > token.expires_at {
+    // Not-yet-valid tokens (clock rollback, or a token minted for the future)
+    // are rejected with a small skew allowance.
+    if now + CLOCK_SKEW_SECS < token.issued_at {
+        return Err(LicenseError::InvalidToken);
+    }
+    if now - CLOCK_SKEW_SECS > token.expires_at {
         return Err(LicenseError::Expired);
     }
     Ok(token)
@@ -71,12 +102,16 @@ mod tests {
     use ed25519_dalek::{Signer, SigningKey};
 
     fn build(signing: &SigningKey, ent: &[u8], now: i64, ttl: i64) -> Vec<u8> {
+        build_v(signing, 1u8, ent, now, now + ttl)
+    }
+
+    fn build_v(signing: &SigningKey, version: u8, ent: &[u8], issued_at: i64, expires_at: i64) -> Vec<u8> {
         let mut out = Vec::new();
-        out.push(1u8);
+        out.push(version);
         out.extend_from_slice(&[0xAAu8; 16]);
         out.extend_from_slice(&[0xBBu8; 32]);
-        out.extend_from_slice(&now.to_be_bytes());
-        out.extend_from_slice(&(now + ttl).to_be_bytes());
+        out.extend_from_slice(&issued_at.to_be_bytes());
+        out.extend_from_slice(&expires_at.to_be_bytes());
         out.extend_from_slice(&(ent.len() as u32).to_be_bytes());
         out.extend_from_slice(ent);
         out.extend_from_slice(&[0xCCu8; 32]);
@@ -126,6 +161,42 @@ mod tests {
         let other = SigningKey::from_bytes(&[8u8; 32]).verifying_key();
         let tok = build(&key, b"x", 1_700_000_000, 60);
         let err = verify(&tok, &other.to_bytes(), 1_700_000_000).unwrap_err();
+        assert!(matches!(err, LicenseError::InvalidToken));
+    }
+
+    #[test]
+    fn parse_rejects_oversized_entitlements_length() {
+        let mut buf = vec![1u8; 1 + 16 + 32 + 8 + 8];
+        buf.extend_from_slice(&((MAX_ENTITLEMENTS_LEN as u32) + 1).to_be_bytes());
+        buf.extend_from_slice(&[0u8; 32 + 64]);
+        assert!(matches!(parse(&buf).unwrap_err(), LicenseError::InvalidToken));
+    }
+
+    #[test]
+    fn verify_rejects_unknown_version() {
+        let key = SigningKey::from_bytes(&[7u8; 32]);
+        let pk = key.verifying_key();
+        let tok = build_v(&key, 2u8, b"x", 1_700_000_000, 1_700_000_060);
+        let err = verify(&tok, &pk.to_bytes(), 1_700_000_000).unwrap_err();
+        assert!(matches!(err, LicenseError::InvalidToken));
+    }
+
+    #[test]
+    fn verify_rejects_not_yet_valid_token() {
+        let key = SigningKey::from_bytes(&[7u8; 32]);
+        let pk = key.verifying_key();
+        // Issued 1 hour in the future relative to `now`.
+        let tok = build_v(&key, 1u8, b"x", 1_700_003_600, 1_700_007_200);
+        let err = verify(&tok, &pk.to_bytes(), 1_700_000_000).unwrap_err();
+        assert!(matches!(err, LicenseError::InvalidToken));
+    }
+
+    #[test]
+    fn verify_rejects_expires_before_issued() {
+        let key = SigningKey::from_bytes(&[7u8; 32]);
+        let pk = key.verifying_key();
+        let tok = build_v(&key, 1u8, b"x", 1_700_000_060, 1_700_000_000);
+        let err = verify(&tok, &pk.to_bytes(), 1_700_000_030).unwrap_err();
         assert!(matches!(err, LicenseError::InvalidToken));
     }
 

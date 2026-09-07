@@ -15,6 +15,7 @@
 //!   server_url: "http://localhost:8080".to_string(),
 //!   cache_path: std::env::temp_dir().join("licensify.token"),
 //!   server_public_key: [0u8; 32],
+//!   expected_digest: None,
 //! };
 //! let mut c = LicensifyClient::new(cfg)?;
 //! c.activate("LICENSE-KEY")?;
@@ -36,6 +37,7 @@ mod tests {
             server_url: "http://localhost:0".into(),
             cache_path: std::env::temp_dir().join("licensify-rust-sdk-test.token"),
             server_public_key: [0u8; 32],
+            expected_digest: None,
         }
     }
 

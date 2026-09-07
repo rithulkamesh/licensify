@@ -13,17 +13,17 @@ server/cmd/licensify-server/main.go:35
 server/internal/auth/service.go:36
 server/internal/ca/ca.go:36
 server/internal/ca/ca.go:98
-server/internal/token/token.go:29
+server/internal/token/token.go:71
 
 # Default Listener inside Run() is exercised by the integration harness (see
 # server/cmd/harness/main.go). The unit tests inject a fake listener instead.
-server/internal/server/run.go:38
+server/internal/server/run.go:39
 
 # api.activate's IssueLeaf error branch — fails only on x509/crypto failure.
-server/internal/api/server.go:134
+server/internal/api/server.go:165
 
 # MemStore.Close has no statements (nil body); Go reports 0/0 as 0.0%.
-server/internal/db/memstore.go:85
+server/internal/db/memstore.go:97
 
 # PgStore is exercised against a real Postgres instance in CI (LICENSIFY_TEST_DATABASE_URL).
 # Locally the tests skip and these functions read 0%.

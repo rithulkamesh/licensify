@@ -10,6 +10,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         server_url: std::env::var("LICENSIFY_BASE_URL").unwrap_or_else(|_| "http://localhost:8080".to_string()),
         cache_path: std::env::temp_dir().join("licensify.token"),
         server_public_key: [0u8; 32],
+        expected_digest: None,
     };
     let mut client = LicensifyClient::new(cfg)?;
     let key = std::env::var("LICENSIFY_LICENSE_KEY").unwrap_or_else(|_| "LICENSE-KEY-DEV".to_string());

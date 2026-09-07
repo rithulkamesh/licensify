@@ -44,13 +44,13 @@ this file will be rejected.
 
 ### `sdk/typescript/src/index.ts` — `loadNative()`
 
-- **Reason**: This function imports `ffi-napi` and binds `liblicensify`. Both
+- **Reason**: This function loads `koffi` and binds `liblicensify`. Both
   are runtime-loaded native dependencies that are already exercised end-to-end
   by the native e2e test (`LICENSIFY_NATIVE=1`) which runs in CI. Including it
   in the c8 measurement would double-count and require the test runner to load
   native deps it doesn't need.
 - **Marker**: `/* c8 ignore start ... c8 ignore stop */`
-- **Test that would otherwise be required**: a unit test that mocks `ffi-napi`
+- **Test that would otherwise be required**: a unit test that mocks `koffi`
   via the Node loader, which would not exercise the actual library binding.
 
 ### `mcp/licensify/src/server.ts` — `loadSdk()`, `start()`, McpServer wiring
@@ -88,15 +88,15 @@ this file will be rejected.
   - `internal/ca/ca.go:36` — `NewAuthority` (`ed25519.GenerateKey`,
     `x509.CreateCertificate`, `x509.ParseCertificate` failures)
   - `internal/ca/ca.go:98` — `IssueLeaf` (same crypto failures)
-  - `internal/token/token.go:29` — `Build` (`rand.Read` failure)
-  - `internal/api/server.go:134` — `activate` (cascading `IssueLeaf` failure)
+  - `internal/token/token.go:71` — `Build` (`rand.Read` failure)
+  - `internal/api/server.go:165` — `activate` (cascading `IssueLeaf` failure)
 - **Reason**: These return error paths only fire when the OS-level RNG or the
   Go `crypto/x509` package returns an error — situations that cannot be
   reproduced from a Go test without monkey-patching the standard library. The
   happy paths and structural assertions are 100% covered.
 - **Marker**: `scripts/coverage-allowlist.txt` entries.
 
-### Server: `internal/server/run.go:38` — `Run()` default `Listener`
+### Server: `internal/server/run.go:39` — `Run()` default `Listener`
 
 - **Reason**: The default `Listener` calls `srv.Echo.Start(addr)` which blocks
   until error or graceful shutdown. Exercising it without a real bind would
@@ -105,7 +105,7 @@ this file will be rejected.
   every SDK e2e test).
 - **Marker**: `scripts/coverage-allowlist.txt` entry.
 
-### Server: `internal/db/memstore.go:85` — `MemStore.Close`
+### Server: `internal/db/memstore.go:97` — `MemStore.Close`
 
 - **Reason**: `Close()` has no body (the in-memory store has no resources to
   release). `go test` reports 0/0 statements as 0.0% even though it is called

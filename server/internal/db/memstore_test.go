@@ -39,6 +39,22 @@ func TestMemStoreCRUD(t *testing.T) {
 	}
 }
 
+func TestMemStoreGetByKeyHash(t *testing.T) {
+	ctx := context.Background()
+	s := NewMemStore()
+	kh := []byte{0xAA, 0xBB, 0xCC}
+	if _, err := s.Create(ctx, license.License{ID: "k1", KeyHash: kh, LicenseType: license.Perpetual}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetByKeyHash(ctx, kh)
+	if err != nil || got.ID != "k1" {
+		t.Fatalf("get by key hash: %v %v", got, err)
+	}
+	if _, err := s.GetByKeyHash(ctx, []byte{0x00}); err == nil {
+		t.Fatal("expected not found for unknown key hash")
+	}
+}
+
 func TestMemStoreOpaque(t *testing.T) {
 	ctx := context.Background()
 	s := NewMemStore()

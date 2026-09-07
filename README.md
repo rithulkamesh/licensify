@@ -17,11 +17,21 @@
 
 ## Why Licensify
 
-- **No JWT** — custom binary + signed token format, not self-describing JSON payloads.
-- **Machine-bound by design** — hardware-derived machine identity is part of activation and validation.
-- **Offline-first enforcement** — cached encrypted token supports offline checks with local policy enforcement.
-- **FFI-first architecture** — one hardened Rust core, consumed consistently from Go/C++/TypeScript/Rust/C/Zig.
-- **Server-issued cert chain model** — activation and validation are cryptographically anchored from server CA material.
+- **No JWT** — custom binary token with an Ed25519 signature over every field, not self-describing JSON payloads.
+- **Machine-bound and enforced** — a token embeds `SHA-256(machine_id)`; `check()` recomputes the local fingerprint on every validation and rejects tokens bound to another host.
+- **Offline-first enforcement** — the cached token is sealed with AES-256-GCM (per-write random nonce) under a key derived from the hardware fingerprint, with clock-rollback protection.
+- **FFI-first architecture** — one hardened Rust core, consumed consistently from Go/C++/TypeScript/Rust/C/Zig over a stable C ABI.
+- **Server-issued cert chain** — `activate` verifies the issued `leaf → intermediate → root` Ed25519 chain (signatures, validity windows, CA constraints) against the server's published root.
+- **Optional anti-tamper** — pin the host binary's SHA-256 (`LICENSIFY_EXPECTED_DIGEST` / `licensify_set_expected_digest`) and `check()` fails closed if the running executable is modified.
+
+### Key discovery & hardening knobs
+
+| Setting | Purpose |
+|---------|---------|
+| `LICENSIFY_TOKEN_SIGNING_KEY` (server) | 32-byte seed for the stable token-signing key; keep it stable so old offline tokens keep verifying. |
+| `GET /v1/.well-known/token-key` | Server's token-signing public key (hex); the client fetches this during `activate`. |
+| `LICENSIFY_SERVER_PUBLIC_KEY` / `licensify_set_server_key` (client) | Set the verification key explicitly for offline-only deployments. |
+| `LICENSIFY_EXPECTED_DIGEST` / `licensify_set_expected_digest` (client) | Pin the host-binary SHA-256 for anti-tamper. |
 
 ## Quick start
 

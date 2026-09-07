@@ -21,6 +21,10 @@ pub enum LicenseError {
     InvalidCertificate,
     #[error("license inactive")]
     Inactive,
+    #[error("token is not bound to this machine")]
+    MachineMismatch,
+    #[error("token rollback detected")]
+    Rollback,
 }
 
 impl From<std::io::Error> for LicenseError {
@@ -50,6 +54,8 @@ mod tests {
             (LicenseError::Expired, "expired token"),
             (LicenseError::InvalidCertificate, "invalid certificate"),
             (LicenseError::Inactive, "license inactive"),
+            (LicenseError::MachineMismatch, "token is not bound to this machine"),
+            (LicenseError::Rollback, "token rollback detected"),
         ];
         for (err, want) in cases {
             assert_eq!(err.to_string(), *want);

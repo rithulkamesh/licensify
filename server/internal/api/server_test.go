@@ -8,6 +8,8 @@ package api
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -20,13 +22,21 @@ import (
 	"github.com/rithulkamesh/licensify/server/internal/license"
 )
 
+const clientKey = "LICENSE-KEY-DEV"
+
+func testTokenKey(t *testing.T) ed25519.PrivateKey {
+	t.Helper()
+	seed := bytes.Repeat([]byte{0x7}, ed25519.SeedSize)
+	return ed25519.NewKeyFromSeed(seed)
+}
+
 func newTestServer(t *testing.T) *Server {
 	t.Helper()
 	authority, err := ca.NewAuthority()
 	if err != nil {
 		t.Fatal(err)
 	}
-	return New(db.NewMemStore(), authority, "secret")
+	return New(db.NewMemStore(), authority, "secret", testTokenKey(t))
 }
 
 func do(t *testing.T, s *Server, method, path string, body any, apiKey string) *httptest.ResponseRecorder {
@@ -68,7 +78,7 @@ func doRaw(t *testing.T, s *Server, method, path, body, apiKey string) *httptest
 func createLicense(t *testing.T, s *Server) string {
 	t.Helper()
 	body := map[string]any{
-		"license_key":  "LICENSE-KEY-DEV",
+		"license_key":  clientKey,
 		"license_type": "perpetual",
 		"entitlements": map[string]any{
 			"license_type":       "perpetual",
@@ -101,9 +111,21 @@ func TestHealthAndCaArePublic(t *testing.T) {
 	}
 }
 
+func TestTokenKeyIsPublicAndMatchesSigningKey(t *testing.T) {
+	s := newTestServer(t)
+	rec := do(t, s, http.MethodGet, "/v1/.well-known/token-key", nil, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("token-key: %d", rec.Code)
+	}
+	want := hex.EncodeToString(testTokenKey(t).Public().(ed25519.PublicKey))
+	if got := strings.TrimSpace(rec.Body.String()); got != want {
+		t.Fatalf("token-key mismatch: got %q want %q", got, want)
+	}
+}
+
 func TestHealthReturnsDownWhenStoreDown(t *testing.T) {
 	auth, _ := ca.NewAuthority()
-	s := New(newDownStore(), auth, "secret")
+	s := New(newDownStore(), auth, "secret", testTokenKey(t))
 	rec := do(t, s, http.MethodGet, "/v1/health", nil, "")
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("expected 503, got %d", rec.Code)
@@ -122,7 +144,7 @@ func TestProtectedRoutesRequireApiKey(t *testing.T) {
 
 func TestEmptyApiKeyDisablesAuth(t *testing.T) {
 	auth, _ := ca.NewAuthority()
-	s := New(db.NewMemStore(), auth, "")
+	s := New(db.NewMemStore(), auth, "", testTokenKey(t))
 	rec := do(t, s, http.MethodPost, "/v1/license", map[string]any{
 		"license_key":  "k",
 		"license_type": "perpetual",
@@ -202,74 +224,94 @@ func TestUpdateLicense(t *testing.T) {
 	}
 }
 
-// --- activate / validate ---
+// --- activate / validate (client surface, authenticated by license key) ---
 
 func TestActivateAndValidate(t *testing.T) {
 	s := newTestServer(t)
-	id := createLicense(t, s)
+	createLicense(t, s)
 	mid := bytes.Repeat([]byte{0xAB}, 32)
-	upload := []byte("opaque-upload")
 	rec := do(t, s, http.MethodPost, "/v1/activate", map[string]any{
-		"license_id":                 id,
+		"license_key":                clientKey,
 		"machine_id":                 mid,
-		"opaque_registration_upload": upload,
-	}, "secret")
+		"opaque_registration_upload": []byte("opaque-upload"),
+	}, "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("activate: %d %s", rec.Code, rec.Body.String())
 	}
 
 	val := do(t, s, http.MethodPost, "/v1/validate", map[string]any{
-		"license_id":           id,
+		"license_key":          clientKey,
 		"machine_id":           mid,
 		"opaque_login_request": []byte("login"),
 		"client_nonce":         []byte("nonce"),
-	}, "secret")
+	}, "")
 	if val.Code != http.StatusOK {
 		t.Fatalf("validate: %d %s", val.Code, val.Body.String())
+	}
+	var out struct {
+		LicenseToken []byte `json:"license_token"`
+	}
+	if err := json.Unmarshal(val.Body.Bytes(), &out); err != nil || len(out.LicenseToken) == 0 {
+		t.Fatalf("validate token: %v body=%s", err, val.Body.String())
+	}
+	// The token must verify against the server's published signing key.
+	unsigned := out.LicenseToken[:len(out.LicenseToken)-64]
+	sig := out.LicenseToken[len(out.LicenseToken)-64:]
+	if !ed25519.Verify(testTokenKey(t).Public().(ed25519.PublicKey), unsigned, sig) {
+		t.Fatal("license token did not verify against the server signing key")
 	}
 }
 
 func TestActivateBadBind(t *testing.T) {
 	s := newTestServer(t)
-	rec := doRaw(t, s, http.MethodPost, "/v1/activate", "{not json", "secret")
+	rec := doRaw(t, s, http.MethodPost, "/v1/activate", "{not json", "")
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestActivateUnknownLicenseKey(t *testing.T) {
+	s := newTestServer(t)
+	rec := do(t, s, http.MethodPost, "/v1/activate", map[string]any{
+		"license_key":                "nope",
+		"machine_id":                 []byte{1},
+		"opaque_registration_upload": []byte{2},
+	}, "")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestActivateMissingLicenseKey(t *testing.T) {
+	s := newTestServer(t)
+	rec := do(t, s, http.MethodPost, "/v1/activate", map[string]any{
+		"machine_id": []byte{1},
+	}, "")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
 	}
 }
 
 func TestActivateRejectsEmptyUpload(t *testing.T) {
 	s := newTestServer(t)
-	id := createLicense(t, s)
+	createLicense(t, s)
 	rec := do(t, s, http.MethodPost, "/v1/activate", map[string]any{
-		"license_id": id,
-		"machine_id": []byte{1, 2, 3},
-	}, "secret")
+		"license_key": clientKey,
+		"machine_id":  []byte{1, 2, 3},
+	}, "")
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
 	}
 }
 
-func TestActivateMissingLicenseAfterRegister(t *testing.T) {
-	auth, _ := ca.NewAuthority()
-	s := New(&licenseMissingStore{MemStore: db.NewMemStore()}, auth, "secret")
-	rec := do(t, s, http.MethodPost, "/v1/activate", map[string]any{
-		"license_id":                 "ghost",
-		"machine_id":                 []byte{1},
-		"opaque_registration_upload": []byte{2},
-	}, "secret")
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("expected 404, got %d", rec.Code)
-	}
-}
-
 func TestValidateMissingRecord(t *testing.T) {
 	s := newTestServer(t)
-	id := createLicense(t, s)
+	createLicense(t, s)
 	rec := do(t, s, http.MethodPost, "/v1/validate", map[string]any{
-		"license_id":           id,
+		"license_key":          clientKey,
 		"machine_id":           []byte{1},
 		"opaque_login_request": []byte("login"),
-	}, "secret")
+	}, "")
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401 (no opaque record), got %d", rec.Code)
 	}
@@ -277,52 +319,65 @@ func TestValidateMissingRecord(t *testing.T) {
 
 func TestValidateBadBind(t *testing.T) {
 	s := newTestServer(t)
-	rec := doRaw(t, s, http.MethodPost, "/v1/validate", "{not json", "secret")
+	rec := doRaw(t, s, http.MethodPost, "/v1/validate", "{not json", "")
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
 	}
 }
 
-func TestValidateMissingLicense(t *testing.T) {
-	auth, _ := ca.NewAuthority()
-	st := db.NewMemStore()
-	_ = st.StoreOpaqueRecord(context.Background(), "ghost", []byte("rec"))
-	s := New(st, auth, "secret")
+func TestValidateUnknownLicenseKey(t *testing.T) {
+	s := newTestServer(t)
 	rec := do(t, s, http.MethodPost, "/v1/validate", map[string]any{
-		"license_id":           "ghost",
+		"license_key":          "ghost",
 		"machine_id":           []byte{1},
 		"opaque_login_request": []byte("l"),
-	}, "secret")
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("expected 404, got %d", rec.Code)
+	}, "")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
 	}
 }
 
 // --- deactivate / heartbeat ---
 
-func TestDeactivateAlwaysOk(t *testing.T) {
+func TestDeactivate(t *testing.T) {
 	s := newTestServer(t)
-	rec := do(t, s, http.MethodPost, "/v1/deactivate", map[string]any{}, "secret")
+	createLicense(t, s)
+	rec := do(t, s, http.MethodPost, "/v1/deactivate", map[string]any{"license_key": clientKey}, "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("deactivate: %d", rec.Code)
+	}
+	bad := doRaw(t, s, http.MethodPost, "/v1/deactivate", "{not json", "")
+	if bad.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", bad.Code)
+	}
+	unauth := do(t, s, http.MethodPost, "/v1/deactivate", map[string]any{"license_key": "nope"}, "")
+	if unauth.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", unauth.Code)
 	}
 }
 
 func TestHeartbeatHappyAndBad(t *testing.T) {
 	s := newTestServer(t)
+	createLicense(t, s)
 	rec := do(t, s, http.MethodPost, "/v1/heartbeat", map[string]any{
-		"license_id": "x", "machine_id": "y", "nonce": "z",
-	}, "secret")
+		"license_key": clientKey, "machine_id": "y", "nonce": "z",
+	}, "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("heartbeat: %d", rec.Code)
 	}
-	bad := do(t, s, http.MethodPost, "/v1/heartbeat", map[string]any{}, "secret")
+	bad := do(t, s, http.MethodPost, "/v1/heartbeat", map[string]any{}, "")
 	if bad.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", bad.Code)
 	}
-	bad2 := doRaw(t, s, http.MethodPost, "/v1/heartbeat", "{not json", "secret")
+	bad2 := doRaw(t, s, http.MethodPost, "/v1/heartbeat", "{not json", "")
 	if bad2.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", bad2.Code)
+	}
+	unauth := do(t, s, http.MethodPost, "/v1/heartbeat", map[string]any{
+		"license_key": "nope", "machine_id": "y", "nonce": "z",
+	}, "")
+	if unauth.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", unauth.Code)
 	}
 }
 
@@ -339,7 +394,6 @@ func TestSeatLifecycle(t *testing.T) {
 	if acq.Code != http.StatusOK {
 		t.Fatalf("seat acquire: %d", acq.Code)
 	}
-	// Status AFTER acquire exercises the loop body that emits machine IDs.
 	stAfter := do(t, s, http.MethodGet, "/v1/seats/"+id, nil, "secret")
 	if stAfter.Code != http.StatusOK || !strings.Contains(stAfter.Body.String(), "m1") {
 		t.Fatalf("seat status after acquire: %d body=%s", stAfter.Code, stAfter.Body.String())
@@ -370,13 +424,6 @@ func (downStore) Health(_ context.Context) error { return errors.New("down") }
 
 func newDownStore() *downStore { return &downStore{MemStore: db.NewMemStore()} }
 
-// licenseMissingStore makes Activate's auth.Register succeed but license.Get fail.
-type licenseMissingStore struct{ *db.MemStore }
-
-func (s *licenseMissingStore) GetByID(_ context.Context, _ string) (license.License, error) {
-	return license.License{}, errors.New("license not found")
-}
-
 // updateFailStore allows GetByID but rejects Update to exercise the 400 branch.
 type updateFailStore struct{ *db.MemStore }
 
@@ -388,7 +435,7 @@ func (s *updateFailStore) Update(_ context.Context, _ license.License) (license.
 // `token.Build` to fail with an InvalidArgument error in the validate handler.
 type badIDStore struct{ *db.MemStore }
 
-func (s *badIDStore) GetByID(_ context.Context, _ string) (license.License, error) {
+func (s *badIDStore) GetByKeyHash(_ context.Context, _ []byte) (license.License, error) {
 	return license.License{ID: "not-a-uuid", LicenseType: license.Perpetual}, nil
 }
 
@@ -397,7 +444,7 @@ func TestUpdateLicensePropagatesStoreError(t *testing.T) {
 	st := db.NewMemStore()
 	id := "id-update-err"
 	_, _ = st.Create(context.Background(), license.License{ID: id, LicenseType: license.Perpetual})
-	s := New(&updateFailStore{MemStore: st}, auth, "secret")
+	s := New(&updateFailStore{MemStore: st}, auth, "secret", testTokenKey(t))
 	rec := do(t, s, http.MethodPut, "/v1/license/"+id, map[string]any{"revoked": true}, "secret")
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
@@ -407,13 +454,13 @@ func TestUpdateLicensePropagatesStoreError(t *testing.T) {
 func TestValidateTokenBuildErrorReturns500(t *testing.T) {
 	auth, _ := ca.NewAuthority()
 	st := db.NewMemStore()
-	_ = st.StoreOpaqueRecord(context.Background(), "anything", []byte("rec"))
-	s := New(&badIDStore{MemStore: st}, auth, "secret")
+	_ = st.StoreOpaqueRecord(context.Background(), "not-a-uuid", []byte("rec"))
+	s := New(&badIDStore{MemStore: st}, auth, "secret", testTokenKey(t))
 	rec := do(t, s, http.MethodPost, "/v1/validate", map[string]any{
-		"license_id":           "anything",
+		"license_key":          "whatever",
 		"machine_id":           []byte{1},
 		"opaque_login_request": []byte("l"),
-	}, "secret")
+	}, "")
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500 from token.Build, got %d body=%s", rec.Code, rec.Body.String())
 	}

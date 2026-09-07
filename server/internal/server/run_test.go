@@ -72,6 +72,23 @@ func TestRunPropagatesStoreError(t *testing.T) {
 	}
 }
 
+func TestRunPropagatesTokenKeyError(t *testing.T) {
+	err := Run(context.Background(), Options{
+		Env: func(k string) string {
+			if k == "LICENSIFY_TOKEN_SIGNING_KEY" {
+				return "not-a-valid-seed-!!"
+			}
+			return ""
+		},
+		NewStore:     func(_ context.Context, _ string) (db.Store, error) { return db.NewMemStore(), nil },
+		NewAuthority: func() (*ca.Authority, error) { return ca.NewAuthority() },
+		Listener:     func(*api.Server, string) error { return nil },
+	})
+	if err == nil {
+		t.Fatal("expected error for an invalid token signing seed")
+	}
+}
+
 func TestRunPropagatesCAError(t *testing.T) {
 	err := Run(context.Background(), Options{
 		Env:      func(string) string { return "" },

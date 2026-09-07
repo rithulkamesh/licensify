@@ -22,26 +22,32 @@ import (
 )
 
 type Server struct {
-	Echo    *echo.Echo
-	store   db.Store
-	license *license.Service
-	auth    *auth.Service
-	ca      *ca.Authority
-	apiKey  string
-	seatMu  sync.Mutex
-	seats   map[string]map[string]time.Time
+	Echo     *echo.Echo
+	store    db.Store
+	license  *license.Service
+	auth     *auth.Service
+	ca       *ca.Authority
+	apiKey   string
+	tokenKey ed25519.PrivateKey
+	seatMu   sync.Mutex
+	seats    map[string]map[string]time.Time
 }
 
-func New(store db.Store, authority *ca.Authority, apiKey string) *Server {
+// New wires the HTTP API. `apiKey` guards the admin surface (license CRUD,
+// seats). `tokenKey` is the stable Ed25519 key that signs offline license
+// tokens; its public half is published at `/v1/.well-known/token-key` and is
+// what clients verify cached tokens against.
+func New(store db.Store, authority *ca.Authority, apiKey string, tokenKey ed25519.PrivateKey) *Server {
 	e := echo.New()
 	s := &Server{
-		Echo:    e,
-		store:   store,
-		license: license.NewService(store),
-		auth:    auth.NewService(store),
-		ca:      authority,
-		apiKey:  apiKey,
-		seats:   map[string]map[string]time.Time{},
+		Echo:     e,
+		store:    store,
+		license:  license.NewService(store),
+		auth:     auth.NewService(store),
+		ca:       authority,
+		apiKey:   apiKey,
+		tokenKey: tokenKey,
+		seats:    map[string]map[string]time.Time{},
 	}
 	s.routes()
 	return s
@@ -50,19 +56,29 @@ func New(store db.Store, authority *ca.Authority, apiKey string) *Server {
 func (s *Server) routes() {
 	s.Echo.GET("/v1/health", s.health)
 	s.Echo.GET("/v1/.well-known/ca", s.caRoot)
+	s.Echo.GET("/v1/.well-known/token-key", s.tokenKeyPub)
 
-	g := s.Echo.Group("/v1")
-	g.Use(s.requireAPIKey)
-	g.POST("/license", s.createLicense)
-	g.GET("/license/:id", s.getLicense)
-	g.PUT("/license/:id", s.updateLicense)
-	g.POST("/activate", s.activate)
-	g.POST("/validate", s.validate)
-	g.POST("/deactivate", s.deactivate)
-	g.POST("/heartbeat", s.heartbeat)
-	g.GET("/seats/:id", s.seatStatus)
-	g.POST("/seats/:id/acquire", s.seatAcquire)
-	g.POST("/seats/:id/release", s.seatRelease)
+	// Admin surface: guarded by the API key.
+	admin := s.Echo.Group("/v1")
+	admin.Use(s.requireAPIKey)
+	admin.POST("/license", s.createLicense)
+	admin.GET("/license/:id", s.getLicense)
+	admin.PUT("/license/:id", s.updateLicense)
+	admin.GET("/seats/:id", s.seatStatus)
+	admin.POST("/seats/:id/acquire", s.seatAcquire)
+	admin.POST("/seats/:id/release", s.seatRelease)
+
+	// Client surface: authenticated by license-key possession, not the admin
+	// API key. A client SDK should never need to ship the admin key.
+	client := s.Echo.Group("/v1")
+	client.POST("/activate", s.activate)
+	client.POST("/validate", s.validate)
+	client.POST("/deactivate", s.deactivate)
+	client.POST("/heartbeat", s.heartbeat)
+}
+
+func (s *Server) tokenKeyPub(c echo.Context) error {
+	return c.String(http.StatusOK, token.PublicKeyHex(s.tokenKey))
 }
 
 func (s *Server) requireAPIKey(next echo.HandlerFunc) echo.HandlerFunc {
@@ -131,23 +147,37 @@ func (s *Server) updateLicense(c echo.Context) error {
 	return c.JSON(http.StatusOK, l)
 }
 
+// resolveClientLicense authenticates a client request by license-key possession
+// and returns the matching license.
+func (s *Server) resolveClientLicense(c echo.Context, key string) (license.License, bool) {
+	if key == "" {
+		_ = c.JSON(http.StatusUnauthorized, map[string]string{"error": "license_key required"})
+		return license.License{}, false
+	}
+	l, err := s.license.GetByKey(c.Request().Context(), key)
+	if err != nil {
+		_ = c.JSON(http.StatusUnauthorized, map[string]string{"error": "unknown license_key"})
+		return license.License{}, false
+	}
+	return l, true
+}
+
 func (s *Server) activate(c echo.Context) error {
 	var req struct {
-		LicenseID      string            `json:"license_id"`
-		MachineID      []byte            `json:"machine_id"`
-		OpaqueUpload   []byte            `json:"opaque_registration_upload"`
-		HWComponents   map[string]string `json:"hardware_components"`
-		LicenseKeyHash []byte            `json:"license_key_hash"`
+		LicenseKey   string            `json:"license_key"`
+		MachineID    []byte            `json:"machine_id"`
+		OpaqueUpload []byte            `json:"opaque_registration_upload"`
+		HWComponents map[string]string `json:"hardware_components"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
-	if err := s.auth.Register(c.Request().Context(), req.LicenseID, req.OpaqueUpload); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	l, ok := s.resolveClientLicense(c, req.LicenseKey)
+	if !ok {
+		return nil
 	}
-	l, err := s.license.Get(c.Request().Context(), req.LicenseID)
-	if err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+	if err := s.auth.Register(c.Request().Context(), l.ID, req.OpaqueUpload); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 	leaf, _, err := s.ca.IssueLeaf(l.ID, license.StableMachineID(req.MachineID), l.Entitlements, time.Now().UTC().AddDate(1, 0, 0))
 	if err != nil {
@@ -158,27 +188,27 @@ func (s *Server) activate(c echo.Context) error {
 
 func (s *Server) validate(c echo.Context) error {
 	var req struct {
-		LicenseID  string `json:"license_id"`
-		MachineID  []byte `json:"machine_id"`
-		OpaqueReq  []byte `json:"opaque_login_request"`
+		LicenseKey  string `json:"license_key"`
+		MachineID   []byte `json:"machine_id"`
+		OpaqueReq   []byte `json:"opaque_login_request"`
 		ClientNonce []byte `json:"client_nonce"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
-	_, sessionKey, err := s.auth.StartLogin(c.Request().Context(), req.LicenseID, req.OpaqueReq)
-	if err != nil {
+	l, ok := s.resolveClientLicense(c, req.LicenseKey)
+	if !ok {
+		return nil
+	}
+	if _, _, err := s.auth.StartLogin(c.Request().Context(), l.ID, req.OpaqueReq); err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
-	l, err := s.license.Get(c.Request().Context(), req.LicenseID)
-	if err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
-	}
 	entJSON, _ := json.Marshal(l.Entitlements)
+	// Bind the token to a stable hash of the client's machine id, and sign it
+	// with the server's stable token key so the client can verify it offline
+	// against the key published at /v1/.well-known/token-key.
 	hash := sha256.Sum256(req.MachineID)
-	seed := sha256.Sum256(sessionKey)
-	signingKey := ed25519.NewKeyFromSeed(seed[:])
-	tok, err := token.Build(l.ID, hash, entJSON, 30*24*time.Hour, signingKey)
+	tok, err := token.Build(l.ID, hash, entJSON, 30*24*time.Hour, s.tokenKey)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
@@ -186,6 +216,15 @@ func (s *Server) validate(c echo.Context) error {
 }
 
 func (s *Server) deactivate(c echo.Context) error {
+	var req struct {
+		LicenseKey string `json:"license_key"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	if _, ok := s.resolveClientLicense(c, req.LicenseKey); !ok {
+		return nil
+	}
 	return c.JSON(http.StatusOK, map[string]bool{"success": true})
 }
 
@@ -236,12 +275,15 @@ func (s *Server) seatRelease(c echo.Context) error {
 
 func (s *Server) heartbeat(c echo.Context) error {
 	var req struct {
-		LicenseID string `json:"license_id"`
-		MachineID string `json:"machine_id"`
-		Nonce     string `json:"nonce"`
+		LicenseKey string `json:"license_key"`
+		MachineID  string `json:"machine_id"`
+		Nonce      string `json:"nonce"`
 	}
-	if err := c.Bind(&req); err != nil || req.LicenseID == "" || req.MachineID == "" || req.Nonce == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "license_id, machine_id and nonce required"})
+	if err := c.Bind(&req); err != nil || req.MachineID == "" || req.Nonce == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "license_key, machine_id and nonce required"})
+	}
+	if _, ok := s.resolveClientLicense(c, req.LicenseKey); !ok {
+		return nil
 	}
 	return c.JSON(http.StatusOK, map[string]any{
 		"ok":         true,
